@@ -1,0 +1,38 @@
+{
+  "case_id": "demo-anomaly-readings",
+  "readings": [
+    {"time": 0, "value": 100, "batch": "A"},
+    {"time": 30, "value": 112, "batch": "A"},
+    {"time": 60, "value": 125, "batch": "A"},
+    {"time": 90, "value": 139, "batch": "A"},
+    {"time": 120, "value": 150, "batch": "A"},
+    {"time": 150, "value": 162, "batch": "A"},
+    {"time": 0, "value": 99, "batch": "B"},
+    {"time": 30, "value": 111, "batch": "B"},
+    {"time": 60, "value": 124, "batch": "B"},
+    {"time": 90, "value": 137, "batch": "B"},
+    {"time": 120, "value": 149, "batch": "B"},
+    {"time": 150, "value": 160, "batch": "B"},
+    {"time": 0, "value": 101, "batch": "C"},
+    {"time": 30, "value": 114, "batch": "C"},
+    {"time": 60, "value": 127, "batch": "C"},
+    {"time": 90, "value": 380, "batch": "C"},
+    {"time": 120, "value": 152, "batch": "C"},
+    {"time": 150, "value": 165, "batch": "C"}
+  ],
+  "metadata": {
+    "instrument": "synthetic plate reader",
+    "unit_note": "value 为合成信号强度（a.u.），仅用于演示异常定位",
+    "replicates": "每个批次单次读数，未提供重复"
+  },
+  "thresholds": {"outlier_z": 3.5},
+  "output_contract": {
+    "dataset": "object",
+    "trend": "object",
+    "anomalies": "array",
+    "causes": "array",
+    "review_steps": "array",
+    "next_experiments": "array",
+    "data_quality": "object"
+  }
+}
