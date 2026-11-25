@@ -1,0 +1,8 @@
+{
+  "case_id": "bench-03-level-shift",
+  "anomaly_rows": [],
+  "batch": "A",
+  "shift": {"kind": "series_level_shift", "series": "batch=A", "first_row_after": 6},
+  "saturated_count": 0,
+  "notes": "No single point is an outlier; batch A steps from about 104 to about 144 between rows 5 and 6, batch B stays flat."
+}
