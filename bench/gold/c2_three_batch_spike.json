@@ -1,0 +1,8 @@
+{
+  "case_id": "bench-02-three-batch-spike",
+  "anomaly_rows": [16],
+  "batch": "C",
+  "shift": {"kind": "series_offset", "series": "batch=C"},
+  "saturated_count": 0,
+  "notes": "Row 16 is a +280 spike confined to batch C; A and B sit near 125 and 425."
+}
