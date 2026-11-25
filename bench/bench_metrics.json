@@ -1,0 +1,129 @@
+{
+  "baseline": {
+    "anomaly": {
+      "f1": 0.0,
+      "fn": 2,
+      "fp": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "tp": 0
+    },
+    "artifacts_per_run": 0,
+    "claims_total": 0,
+    "claims_with_evidence": 0,
+    "commands": 1,
+    "per_case": [
+      {
+        "anomalies": {
+          "fn": 1,
+          "fp": 0,
+          "tp": 0
+        },
+        "case_id": "bench-01-batch-offset-spike",
+        "saturation_ok": null,
+        "shift_ok": false
+      },
+      {
+        "anomalies": {
+          "fn": 1,
+          "fp": 0,
+          "tp": 0
+        },
+        "case_id": "bench-02-three-batch-spike",
+        "saturation_ok": null,
+        "shift_ok": false
+      },
+      {
+        "anomalies": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 0
+        },
+        "case_id": "bench-03-level-shift",
+        "saturation_ok": null,
+        "shift_ok": false
+      },
+      {
+        "anomalies": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 0
+        },
+        "case_id": "bench-04-saturation",
+        "saturation_ok": false,
+        "shift_ok": null
+      }
+    ],
+    "saturation_cases_matched": "0/1",
+    "shift_cases_matched": "0/3",
+    "side": "baseline",
+    "unresolved_targets": 6
+  },
+  "benchmark": "experimental-design/challenge-8354c69a result interpretation",
+  "delta": {
+    "anomaly_f1": 1.0,
+    "traceable_claims": 33,
+    "unresolved_targets": -6
+  },
+  "protocol": "same case files, same gold labels, one command per side; baseline = global mean/SD with |z|>=3, no grouping, no level-shift test, no range check",
+  "skill": {
+    "anomaly": {
+      "f1": 1.0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 2
+    },
+    "artifacts_per_run": 4,
+    "claims_total": 33,
+    "claims_with_evidence": 33,
+    "commands": 1,
+    "per_case": [
+      {
+        "anomalies": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 1
+        },
+        "case_id": "bench-01-batch-offset-spike",
+        "saturation_ok": null,
+        "shift_ok": true
+      },
+      {
+        "anomalies": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 1
+        },
+        "case_id": "bench-02-three-batch-spike",
+        "saturation_ok": null,
+        "shift_ok": true
+      },
+      {
+        "anomalies": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 0
+        },
+        "case_id": "bench-03-level-shift",
+        "saturation_ok": null,
+        "shift_ok": true
+      },
+      {
+        "anomalies": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 0
+        },
+        "case_id": "bench-04-saturation",
+        "saturation_ok": true,
+        "shift_ok": null
+      }
+    ],
+    "saturation_cases_matched": "1/1",
+    "shift_cases_matched": "3/3",
+    "side": "skill",
+    "unresolved_targets": 0
+  }
+}
