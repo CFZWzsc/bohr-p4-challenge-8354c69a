@@ -1,0 +1,25 @@
+{
+  "case_id": "bench-04-saturation",
+  "title": "Bench 04: batch B reaches the declared detector ceiling on its last two rows",
+  "readings": [
+    {"time": 0, "batch": "A", "value": 100},
+    {"time": 10, "batch": "A", "value": 110},
+    {"time": 20, "batch": "A", "value": 120},
+    {"time": 30, "batch": "A", "value": 130},
+    {"time": 40, "batch": "A", "value": 140},
+    {"time": 50, "batch": "A", "value": 150},
+    {"time": 0, "batch": "B", "value": 800},
+    {"time": 10, "batch": "B", "value": 850},
+    {"time": 20, "batch": "B", "value": 900},
+    {"time": 30, "batch": "B", "value": 950},
+    {"time": 40, "batch": "B", "value": 1000},
+    {"time": 50, "batch": "B", "value": 1000}
+  ],
+  "thresholds": {"outlier_z": 3.5, "saturation_max": 1000},
+  "output_contract": {
+    "trend": "object",
+    "anomalies": "array",
+    "causes": "array",
+    "data_quality": "object"
+  }
+}
