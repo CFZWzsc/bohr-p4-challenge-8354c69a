@@ -15,6 +15,7 @@ description: Use when an experimental-design case supplies measured readings, cu
 
 - `/input/case.json`（可用 `--case`）：`case_id`、`output_contract`；常见可选键 `readings`/`measurements`/`data`/`observations`/`rows`、`columns`、`groups`、`thresholds`、`instrument`、`controls`、`metadata`。
 - 读数支持“字典行列表”和“首行表头的二维数组”两种形态。
+- 无内联读数时自动读取案例目录内 `.csv/.tsv/.txt` 表格（首个含数值列者；首行非数值行作表头）。
 - `/input/task.md`（可选）：补充指标口径与判读阈值。
 - 输出默认 `/app/output/result.json`。
 
@@ -60,18 +61,16 @@ description: Use when an experimental-design case supplies measured readings, cu
 
 ## 限制
 
-- 只用标准库；不做多重检验校正、拟合复杂动力学模型或因果推断。
-- 异常阈值是默认判据，案例给出 `thresholds` 时以其为准。
-- 不补造未测量的重复、对照或原因证据；无法归因时明确写“信息不足”。
-- 不修改原始数据文件，只在输出中引用行号。
+- 只用标准库；不做多重检验、动力学拟合或因果推断。阈值默认，案例 `thresholds` 优先。
+- 不补造重复/对照/原因，无法归因时写“信息不足”；不改原始数据，只引用行号。
 
-## 最小调用示例（示例，非官方案例结果）
+## 最小调用示例
 
 ```bash
 python /skills/weekly-skill/scripts/run_skill.py --case /input/case.json --out /app/output/result.json --work /app/work
 ```
 
-示意输入：`{"case_id":"synthetic-interpret-demo","output_contract":{"trend":"object","anomalies":"array"}}`。示意输出保留 `case_id`、`trend`、`anomalies`、`status`；无读数时 `insufficient_input`，`trend` 为 `null`、`anomalies` 为空数组。仅为接口示例。
+示意输入/输出仅演示接口，非官方结果。
 
 
 ## Quickstart
@@ -82,8 +81,9 @@ python /skills/weekly-skill/scripts/run_skill.py --case /input/case.json --out /
 python scripts/run_skill.py --case examples/demo-case/case.json --out ./demo-output/result.json
 ```
 
-- 演示案例：`examples/demo-case/case.json`（3 个批次 × 6 个时间点，含 1 个合成尖峰；纯合成，不代表真实实验）。
-- 输出：`result.json` 含 `dataset`、`trend`、`anomalies`、`causes`、`review_steps`、`next_experiments`、`data_quality`，并给出异常行号；本案例实测 `status="success"`。
+- 演示案例：`examples/demo-case/case.json`（合成，3 批 × 6 点，含 1 个尖峰）。
+- 输出：`result.json` 含契约字段与 `dataset`/`anomalies`/`causes`/`review_steps`/`next_experiments`/`data_quality`，异常带行号；本案例实测 `success`。
+- 增益对照：`bench/run_bench.py` 在同一金标准下对比本技能与朴素全局阈值基线，结果见 `bench/bench_report.md`；复用说明见 `README.md` 与 `templates/`。
 
 ## 交付保证（单次运行）
 
