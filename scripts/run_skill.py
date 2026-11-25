@@ -794,6 +794,36 @@ def contract_fields(case):
     return [str(key) for key in contract.keys()] if isinstance(contract, dict) else []
 
 
+def build_claims(payload):
+    """Index every conclusion segment back to the field and row it rests on."""
+    claims = []
+    for block in (payload.get("series_trends") or [])[:6]:
+        claims.append({
+            "segment": "trend", "series": block.get("series"),
+            "claim": "%s from row %s to row %s; slope %s per x unit; R2 %s" % (
+                block.get("direction"), block.get("first_row"), block.get("last_row"),
+                block.get("slope_per_unit_x"), block.get("r_squared")),
+            "evidence": "series_trends[].slope_per_unit_x/r_squared; rows are 1-based"})
+    for item in (payload.get("anomalies") or [])[:6]:
+        claims.append({
+            "segment": "anomaly",
+            "claim": "row %s value %s robust z %s" % (item.get("row"), item.get("value"), item.get("robust_z")),
+            "evidence": "anomalies[].row; threshold recorded in evidence.thresholds"})
+    for item in (payload.get("causes") or [])[:4]:
+        claims.append({"segment": "cause", "claim": "%s (rank %s): %s" % (
+            item.get("cause"), item.get("rank"), item.get("support")),
+            "evidence": item.get("evidence") or "cause evidence field"})
+    steps = payload.get("review_steps") or []
+    if steps:
+        claims.append({"segment": "review", "claim": "%d executable review step(s); first: %s" % (
+            len(steps), steps[0].get("step")), "evidence": "review_steps[0]"})
+    experiments = payload.get("next_experiments") or []
+    if experiments:
+        claims.append({"segment": "next", "claim": "%d follow-up experiment(s)" % len(experiments),
+                       "evidence": "next_experiments[]"})
+    return claims
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Interpret experimental readings and anomalies.")
     parser.add_argument("--case", default="/input/case.json")
@@ -972,6 +1002,7 @@ def main(argv=None):
     result["errors"] = errors
     result["stats"] = stats
     result["contract_notes"] = notes
+    result["claims"] = build_claims(payload)
 
     out_dir = os.path.dirname(os.path.abspath(args.out))
     try:
