@@ -5,6 +5,7 @@ Standard library only. Deterministic, offline, no private paths.
 """
 
 import argparse
+import csv
 import hashlib
 import json
 import math
@@ -116,6 +117,13 @@ def quantile(values, q):
 
 
 def rows_from_value(value):
+    if isinstance(value, dict):
+        columns = [key for key, column in value.items() if isinstance(column, list)]
+        if columns:
+            length = max(len(value[column]) for column in columns)
+            return [{column: (value[column][idx] if idx < len(value[column]) else None)
+                     for column in columns} for idx in range(length)]
+        return []
     if not isinstance(value, list):
         return []
     rows = []
@@ -141,6 +149,81 @@ def normalize_readings(case):
         if len(rows) > len(best[1]):
             best = (path, rows)
     return best
+
+
+DATA_EXTS = (".csv", ".tsv", ".txt")
+DATA_KEYS = ("readings_file", "measurements_file", "data_file", "table_file",
+             "input_file", "source_file", "readings_path", "data_path")
+
+
+def read_table_file(path):
+    """Parse a delimited text table into row dicts. Returns [] when unusable."""
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+            sample = handle.read(4096)
+            handle.seek(0)
+            lines = [line for line in handle.read().splitlines() if line.strip()]
+    except OSError:
+        return []
+    if not lines:
+        return []
+    delimiter = ","
+    if path.lower().endswith(".tsv") or sample.count("\t") > sample.count(","):
+        delimiter = "\t"
+    elif sample.count(",") == 0:
+        delimiter = None
+    try:
+        if delimiter is None:
+            table = [re.split(r"\s+", line.strip()) for line in lines]
+        else:
+            table = list(csv.reader(lines, delimiter=delimiter))
+    except (csv.Error, ValueError):
+        return []
+    header_index = None
+    for idx, entry in enumerate(table[:5]):
+        if entry and all(num(cell) is None for cell in entry):
+            header_index = idx
+            break
+    if header_index is None:
+        header_index = 0
+    header = [text(cell, 60) or "col_%d" % pos for pos, cell in enumerate(table[header_index])]
+    rows = []
+    for entry in table[header_index + 1:]:
+        if not entry or all(not str(cell).strip() for cell in entry):
+            continue
+        rows.append({header[pos] if pos < len(header) else "col_%d" % pos: cell
+                     for pos, cell in enumerate(entry)})
+    return rows
+
+
+def readings_from_files(case, case_path):
+    """Fallback: read a referenced or sibling CSV/TSV table when the case has no inline rows."""
+    base = os.path.dirname(os.path.abspath(case_path or "/input/case.json"))
+    wanted = []
+    for _path, value in walk(case):
+        if isinstance(value, str) and value.lower().endswith(DATA_EXTS):
+            wanted.append(value)
+    for key in DATA_KEYS:
+        _path, value = find_first(case, (key,))
+        if isinstance(value, str) and value.lower().endswith(DATA_EXTS):
+            wanted.append(value)
+    try:
+        siblings = sorted(name for name in os.listdir(base) if name.lower().endswith(DATA_EXTS))
+    except OSError:
+        siblings = []
+    ordered = []
+    for name in wanted + siblings:
+        candidate = name if os.path.isabs(name) else os.path.join(base, name)
+        if candidate not in ordered and os.path.isfile(candidate):
+            ordered.append(candidate)
+    for candidate in ordered:
+        rows = read_table_file(candidate)
+        if len(rows) < 2:
+            continue
+        _columns, numeric, _categorical = profile(rows)
+        if numeric:
+            return os.path.basename(candidate), rows
+    return None, []
 
 
 def profile(rows):
@@ -872,6 +955,11 @@ def main(argv=None):
         errors.append("case_load_failed: %s" % exc)
 
     reading_path, rows = normalize_readings(case) if ok else (None, [])
+    if ok and not rows:
+        file_name, file_rows = readings_from_files(case, args.case)
+        if file_rows:
+            reading_path, rows = "file:%s" % file_name, file_rows
+            notes.append("readings_loaded_from_file: %s" % file_name)
     columns, numeric, categorical = profile(rows) if rows else ([], {}, {})
     time_col, value_col, group_cols = choose_columns(numeric, categorical) if numeric else (None, None, [])
 
