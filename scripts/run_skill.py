@@ -307,6 +307,247 @@ def detect_anomalies(points, z_threshold):
                        "threshold": z_threshold}
 
 
+def robust_scale(values):
+    med = median(values)
+    if med is None:
+        return None
+    mad = median([abs(value - med) for value in values])
+    if mad:
+        return 1.4826 * mad
+    q1, q3 = quantile(values, 0.25), quantile(values, 0.75)
+    if q1 is None or q3 is None:
+        return None
+    iqr = q3 - q1
+    return iqr / 1.349 if iqr > 0 else None
+
+
+def segment_noise(left, right, fallback_scale):
+    """Noise about each segment median; a monotone ramp has large within-scatter."""
+    noises = []
+    for segment in (left, right):
+        med = median(segment)
+        if med is None:
+            continue
+        mad = median([abs(value - med) for value in segment])
+        if mad:
+            noises.append(1.4826 * mad)
+    return median(noises) if noises else fallback_scale
+
+
+def pooled_step(points, scale):
+    """Split the pooled series at the strongest robust median step.
+
+    Short per-batch series cannot show a level shift, so the pooled series is
+    split at every interior index and the largest median difference is kept.
+    Medians keep a single spike from manufacturing a step.
+    """
+    if len(points) < 6:
+        return None
+    best = None
+    for split in range(3, len(points) - 2):
+        left = [p["y"] for p in points[:split]]
+        right = [p["y"] for p in points[split:]]
+        left_med, right_med = median(left), median(right)
+        noise = segment_noise(left, right, scale)
+        if not noise:
+            continue
+        score = abs(right_med - left_med) / noise
+        if best is None or score > best["score"]:
+            best = {"split": split, "left_median": left_med, "right_median": right_med,
+                    "score": score, "noise": noise}
+    if best is None or best["score"] < 4.0:
+        return None
+    before = points[:best["split"]]
+    after = points[best["split"]:]
+    return {
+        "kind": "pooled_level_shift",
+        "rows_before": [p["row"] for p in before],
+        "rows_after": [p["row"] for p in after],
+        "median_before": best["left_median"],
+        "median_after": best["right_median"],
+        "step_size": round(best["right_median"] - best["left_median"], 6),
+        "score": round(best["score"], 4),
+        "noise_scale": round(best["noise"], 8),
+        "series_before": sorted({p["key"] for p in before}),
+        "series_after": sorted({p["key"] for p in after}),
+        "evidence_locator": "rows %d-%d vs rows %d-%d of the reading table" % (
+            before[0]["row"], before[-1]["row"], after[0]["row"], after[-1]["row"]),
+    }
+
+
+def series_noise(series):
+    values = [point["y"] for point in series]
+    med = median(values)
+    if med is None:
+        return None
+    mad = median([abs(value - med) for value in values])
+    if mad:
+        return 1.4826 * mad
+    diffs = [series[i + 1]["y"] - series[i]["y"] for i in range(len(series) - 1)]
+    if diffs:
+        diff_med = median(diffs)
+        diff_mad = median([abs(d - diff_med) for d in diffs])
+        if diff_mad:
+            return 1.4826 * diff_mad
+    return None
+
+
+def series_offsets(points, fallback_scale):
+    """Compare each series median with the consensus median of the series medians.
+
+    An offset shared by a whole batch has no single outlier, so the pooled view is
+    blind to it. The test divides the median offset by the within-series noise so
+    an offset is only reported when it clears the measurement scatter.
+    """
+    by_key = {}
+    for point in points:
+        by_key.setdefault(point["key"], []).append(point)
+    stats = []
+    for key, series in by_key.items():
+        if len(series) < 2:
+            continue
+        stats.append({"key": key, "median": median([p["y"] for p in series]),
+                      "noise": series_noise(series), "rows": [p["row"] for p in series]})
+    if len(stats) < 2:
+        return []
+    grand = median([item["median"] for item in stats])
+    noises = [item["noise"] for item in stats if item["noise"]]
+    scale = median(noises) if noises else fallback_scale
+    if not scale:
+        return []
+    offsets = []
+    for item in stats:
+        score = abs(item["median"] - grand) / scale
+        if score >= 4.0:
+            offsets.append({
+                "kind": "series_offset",
+                "series": item["key"],
+                "rows": item["rows"],
+                "median": round(item["median"], 6),
+                "consensus_median": round(grand, 6),
+                "offset": round(item["median"] - grand, 6),
+                "score": round(score, 4),
+                "noise_scale": round(scale, 8),
+                "evidence_locator": "series %s median %.4f vs consensus %.4f; rows %s" % (
+                    item["key"], item["median"], grand, item["rows"]),
+            })
+    return offsets
+
+
+def boundary_steps(points, fallback_scale, flagged_keys):
+    """Compare consecutive series in acquisition order for a boundary step."""
+    by_key = {}
+    for point in points:
+        by_key.setdefault(point["key"], []).append(point)
+    ordered = sorted(by_key.items(), key=lambda kv: min(p["row"] for p in kv[1]))
+    found = []
+    for index in range(len(ordered) - 1):
+        key_a, series_a = ordered[index]
+        key_b, series_b = ordered[index + 1]
+        if key_a in flagged_keys or key_b in flagged_keys:
+            continue
+        if len(series_a) < 2 or len(series_b) < 2:
+            continue
+        med_a = median([p["y"] for p in series_a])
+        med_b = median([p["y"] for p in series_b])
+        noises = [item for item in (series_noise(series_a), series_noise(series_b)) if item]
+        scale = median(noises) if noises else fallback_scale
+        if not scale:
+            continue
+        score = abs(med_b - med_a) / scale
+        if score >= 4.0:
+            found.append({
+                "kind": "boundary_level_shift",
+                "series_before": key_a,
+                "series_after": key_b,
+                "rows_before": [p["row"] for p in series_a],
+                "rows_after": [p["row"] for p in series_b],
+                "median_before": round(med_a, 6),
+                "median_after": round(med_b, 6),
+                "step_size": round(med_b - med_a, 6),
+                "score": round(score, 4),
+                "noise_scale": round(scale, 8),
+                "evidence_locator": "boundary %s -> %s: rows %d-%d vs rows %d-%d" % (
+                    key_a, key_b, min(p["row"] for p in series_a),
+                    max(p["row"] for p in series_a),
+                    min(p["row"] for p in series_b),
+                    max(p["row"] for p in series_b)),
+            })
+    return found
+
+
+def series_steps(points, fallback_scale, flagged_keys=()):
+    """Within-series step check, skipping series already reported as an offset."""
+    by_key = {}
+    for point in points:
+        by_key.setdefault(point["key"], []).append(point)
+    found = []
+    for key, series in by_key.items():
+        if key in flagged_keys or len(series) < 6:
+            continue
+        series.sort(key=lambda p: (p["x"] if p["x"] is not None else 0.0, p["row"]))
+        best = None
+        for split in range(3, len(series) - 2):
+            left = [p["y"] for p in series[:split]]
+            right = [p["y"] for p in series[split:]]
+            left_med, right_med = median(left), median(right)
+            noise = segment_noise(left, right, fallback_scale)
+            if not noise:
+                continue
+            score = abs(right_med - left_med) / noise
+            if best is None or score > best["score"]:
+                best = {"split": split, "left": left_med, "right": right_med,
+                        "score": score, "noise": noise}
+        if best and best["score"] >= 4.0:
+            before = series[:best["split"]]
+            after = series[best["split"]:]
+            found.append({
+                "kind": "series_level_shift",
+                "series": key,
+                "rows_before": [p["row"] for p in before],
+                "rows_after": [p["row"] for p in after],
+                "median_before": best["left"],
+                "median_after": best["right"],
+                "step_size": round(best["right"] - best["left"], 6),
+                "score": round(best["score"], 4),
+                "noise_scale": round(best["noise"], 8),
+                "evidence_locator": "series %s: rows %d-%d vs rows %d-%d" % (
+                    key, before[0]["row"], before[-1]["row"], after[0]["row"], after[-1]["row"]),
+            })
+    return found
+
+
+def detect_level_shifts(rows, time_col, value_col, group_cols, exclude_rows=()):
+    points = []
+    for index, row in enumerate(rows):
+        if (index + 1) in exclude_rows:
+            continue
+        y = num(row.get(value_col))
+        if y is None:
+            continue
+        x = num(row.get(time_col)) if time_col else None
+        points.append({"row": index + 1, "x": x, "y": y,
+                       "key": series_key(row, group_cols), "raw": row})
+    if len(points) < 3:
+        return []
+    scale = robust_scale([point["y"] for point in points])
+    points.sort(key=lambda p: (p["x"] if p["x"] is not None else float(p["row"]), p["row"]))
+    by_key = {}
+    for point in points:
+        by_key.setdefault(point["key"], []).append(point)
+    shifts = []
+    if len(by_key) == 1:
+        step = pooled_step(points, scale)
+        if step:
+            shifts.append(step)
+    offsets = series_offsets(points, scale)
+    shifts.extend(offsets)
+    flagged = {item["series"] for item in offsets}
+    shifts.extend(series_steps(points, scale, flagged))
+    shifts.extend(boundary_steps(points, scale, flagged))
+    return shifts
+
+
 def threshold_value(case, names, default):
     for path, value in find_all(case, names):
         number = num(value)
@@ -331,7 +572,7 @@ def saturation_check(rows, value_col, limits):
     return saturated
 
 
-def cause_analysis(anomalies, rows, group_cols, time_col, saturated, threshold):
+def cause_analysis(anomalies, rows, group_cols, time_col, saturated, threshold, level_shifts=()):
     causes = []
 
     def cluster(column):
@@ -389,6 +630,24 @@ def cause_analysis(anomalies, rows, group_cols, time_col, saturated, threshold):
             "evidence": "saturated rows are listed with their limit",
         })
 
+    for shift in level_shifts:
+        if shift["kind"] == "series_offset":
+            detail = "%s: median %.4f vs consensus %.4f (offset %.4f, score %.2f)" % (
+                shift["series"], shift["median"], shift["consensus_median"],
+                shift["offset"], shift["score"])
+        else:
+            detail = "%s: median %.4f -> %.4f (step %.4f, score %.2f)" % (
+                shift["kind"], shift.get("median_before", 0.0), shift.get("median_after", 0.0),
+                shift.get("step_size", 0.0), shift.get("score", 0.0))
+        causes.append({
+            "cause": "level_shift_between_segments",
+            "rank_input": 5.0 + shift.get("score", 0.0),
+            "supported": True,
+            "support": detail,
+            "excludes": "a single-point artefact: the shift is carried by a whole batch or time segment",
+            "evidence": shift.get("evidence_locator"),
+        })
+
     if not group_cols:
         causes.append({
             "cause": "sample_or_operation_issue_unresolved",
@@ -422,7 +681,7 @@ def cause_analysis(anomalies, rows, group_cols, time_col, saturated, threshold):
     return causes
 
 
-def review_steps(anomalies, causes, rows, value_col, time_col):
+def review_steps(anomalies, causes, rows, value_col, time_col, level_shifts=()):
     steps = []
     if anomalies:
         first = anomalies[0]
@@ -455,6 +714,16 @@ def review_steps(anomalies, causes, rows, value_col, time_col):
             "target": "instrument export",
             "purpose": "confirm the analysis used the intended response column",
         })
+    for shift in level_shifts:
+        rows_touched = (shift.get("rows_before") or [])[-2:] + (shift.get("rows_after") or [])[:2]
+        if not rows_touched:
+            rows_touched = shift.get("rows") or []
+        steps.append({
+            "step": "re-open %s and compare %s against the instrument drift log at those rows" % (
+                shift.get("evidence_locator"), value_col),
+            "target": "rows %s" % rows_touched,
+            "purpose": "distinguish a batch/operator step change from a gradual instrument drift",
+        })
     steps.append({
         "step": "recompute the trend and anomaly list from the raw file with the stated threshold",
         "target": "reproducibility",
@@ -463,8 +732,11 @@ def review_steps(anomalies, causes, rows, value_col, time_col):
     return steps
 
 
-def next_experiments(causes, anomalies, rows, group_cols):
+def next_experiments(causes, anomalies, rows, group_cols, level_shifts=()):
     suggestions = []
+    if level_shifts:
+        suggestions.append({"change": "add one blank or calibration standard at each batch and shift boundary", "distinguishes": "a boundary step (new batch, new operator, recalibration) from a true time response"})
+        suggestions.append({"change": "repeat the full time course in a second batch and overlay the pooled curve", "distinguishes": "a reproducible level shift from a one-off run artefact"})
     if any(c["cause"].endswith("batch_linked_effect") for c in causes):
         suggestions.append({"change": "repeat the affected condition in a second batch", "distinguishes": "batch effect vs treatment effect"})
     if any(c["cause"].endswith("channel_linked_effect") for c in causes):
@@ -568,9 +840,12 @@ def main(argv=None):
 
     anomalies.sort(key=lambda item: item["row"])
     saturated = saturation_check(rows, value_col, (sat_low, sat_high)) if value_col else []
-    causes = cause_analysis(anomalies, rows, group_cols, time_col, saturated, z_threshold) if value_col else []
-    reviews = review_steps(anomalies, causes, rows, value_col, time_col) if value_col else []
-    followups = next_experiments(causes, anomalies, rows, group_cols) if value_col else []
+    level_shifts = detect_level_shifts(rows, time_col, value_col, group_cols,
+                                       {item["row"] for item in anomalies}) if value_col else []
+    causes = cause_analysis(anomalies, rows, group_cols, time_col, saturated, z_threshold,
+                            level_shifts) if value_col else []
+    reviews = review_steps(anomalies, causes, rows, value_col, time_col, level_shifts) if value_col else []
+    followups = next_experiments(causes, anomalies, rows, group_cols, level_shifts) if value_col else []
     quality = data_quality(rows, value_col, time_col, numeric, group_cols, saturated) if value_col else {
         "rows": len(rows), "value_column": None, "notes": ["no numeric response column was identified"]}
 
@@ -625,6 +900,7 @@ def main(argv=None):
         "series_trends": trend_blocks,
         "anomalies": anomalies,
         "anomaly_detection": detection,
+        "level_shifts": level_shifts,
         "causes": causes,
         "review_steps": reviews,
         "next_experiments": followups,
@@ -646,6 +922,15 @@ def main(argv=None):
         uncertainty.append("No instrument range was supplied; saturation is not assessed.")
     if anomalies and not any(cause["supported"] for cause in causes):
         uncertainty.append("Anomalies were found but no cause is supported by the table alone.")
+    if level_shifts:
+        uncertainty.append("A level shift spanning several rows was found; it is attributed to a batch, operator or calibration boundary until the run log confirms the cause.")
+    if value_col and group_cols:
+        series_sizes = {}
+        for row in rows:
+            key = series_key(row, group_cols)
+            series_sizes[key] = series_sizes.get(key, 0) + 1
+        if series_sizes and max(series_sizes.values()) < 6:
+            uncertainty.append("Every series has fewer than six points, so a step that all batches share cannot be separated from the trend; add at least six points per batch before claiming a step.")
     clustered = [cause for cause in causes if cause["supported"] and cause["cause"].endswith("_linked_effect")]
     if len(clustered) >= 2:
         uncertainty.append("Batch and channel are confounded in the supplied table; the anomaly cluster cannot separate them.")
@@ -654,6 +939,7 @@ def main(argv=None):
         "rows": len(rows),
         "series": len(series),
         "anomalies": len(anomalies),
+        "level_shifts": len(level_shifts),
         "causes": len(causes),
         "saturated_rows": len(saturated),
         "numeric_columns": len(numeric),
