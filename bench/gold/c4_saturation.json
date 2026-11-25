@@ -1,0 +1,8 @@
+{
+  "case_id": "bench-04-saturation",
+  "anomaly_rows": [],
+  "batch": "B",
+  "shift": null,
+  "saturated_count": 2,
+  "notes": "Batch B reaches the declared ceiling of 1000 on rows 11 and 12; those rows are saturation, not point outliers."
+}
