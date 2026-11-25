@@ -1,0 +1,33 @@
+{
+  "case_id": "bench-03-level-shift",
+  "title": "Bench 03: batch A steps up by 34 units at row 6; no single-point outlier",
+  "readings": [
+    {"time": 0, "batch": "A", "value": 100},
+    {"time": 10, "batch": "A", "value": 102},
+    {"time": 20, "batch": "A", "value": 104},
+    {"time": 30, "batch": "A", "value": 106},
+    {"time": 40, "batch": "A", "value": 108},
+    {"time": 50, "batch": "A", "value": 140},
+    {"time": 60, "batch": "A", "value": 142},
+    {"time": 70, "batch": "A", "value": 144},
+    {"time": 80, "batch": "A", "value": 146},
+    {"time": 90, "batch": "A", "value": 148},
+    {"time": 0, "batch": "B", "value": 99},
+    {"time": 10, "batch": "B", "value": 101},
+    {"time": 20, "batch": "B", "value": 103},
+    {"time": 30, "batch": "B", "value": 105},
+    {"time": 40, "batch": "B", "value": 107},
+    {"time": 50, "batch": "B", "value": 109},
+    {"time": 60, "batch": "B", "value": 111},
+    {"time": 70, "batch": "B", "value": 113},
+    {"time": 80, "batch": "B", "value": 115},
+    {"time": 90, "batch": "B", "value": 117}
+  ],
+  "thresholds": {"outlier_z": 3.5},
+  "output_contract": {
+    "trend": "object",
+    "anomalies": "array",
+    "causes": "array",
+    "data_quality": "object"
+  }
+}
