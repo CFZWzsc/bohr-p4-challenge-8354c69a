@@ -1,0 +1,31 @@
+{
+  "case_id": "bench-02-three-batch-spike",
+  "title": "Bench 02: three batches, spike confined to batch C",
+  "readings": [
+    {"time": 0, "batch": "A", "value": 100},
+    {"time": 10, "batch": "A", "value": 110},
+    {"time": 20, "batch": "A", "value": 120},
+    {"time": 30, "batch": "A", "value": 130},
+    {"time": 40, "batch": "A", "value": 140},
+    {"time": 50, "batch": "A", "value": 150},
+    {"time": 0, "batch": "B", "value": 400},
+    {"time": 10, "batch": "B", "value": 410},
+    {"time": 20, "batch": "B", "value": 420},
+    {"time": 30, "batch": "B", "value": 430},
+    {"time": 40, "batch": "B", "value": 440},
+    {"time": 50, "batch": "B", "value": 450},
+    {"time": 0, "batch": "C", "value": 700},
+    {"time": 10, "batch": "C", "value": 710},
+    {"time": 20, "batch": "C", "value": 720},
+    {"time": 30, "batch": "C", "value": 1000},
+    {"time": 40, "batch": "C", "value": 740},
+    {"time": 50, "batch": "C", "value": 750}
+  ],
+  "thresholds": {"outlier_z": 3.5},
+  "output_contract": {
+    "trend": "object",
+    "anomalies": "array",
+    "causes": "array",
+    "data_quality": "object"
+  }
+}
