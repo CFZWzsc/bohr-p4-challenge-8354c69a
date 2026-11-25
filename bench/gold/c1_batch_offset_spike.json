@@ -1,0 +1,8 @@
+{
+  "case_id": "bench-01-batch-offset-spike",
+  "anomaly_rows": [4],
+  "batch": "A",
+  "shift": {"kind": "series_offset", "series": "batch=A"},
+  "saturated_count": 0,
+  "notes": "Row 4 is a +180 spike inside batch A; the batch offset between A (about 140) and B (about 435) is the expected group-level finding."
+}
