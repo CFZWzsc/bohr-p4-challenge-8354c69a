@@ -824,6 +824,32 @@ def build_claims(payload):
     return claims
 
 
+def build_open_items(payload, data_quality):
+    """List what the readings cannot settle and what a human must confirm."""
+    unexplained = []
+    for cause in payload.get("causes") or []:
+        if not cause.get("supported"):
+            unexplained.append({
+                "item": cause.get("cause"),
+                "reason": "not supported by the supplied readings",
+                "evidence": cause.get("support")})
+    if not data_quality.get("units_declared"):
+        unexplained.append({"item": "unit declaration",
+                            "reason": "units are not declared in the input",
+                            "evidence": "data_quality.units_declared=false"})
+    if data_quality.get("series_without_replicate"):
+        unexplained.append({"item": "replicate statistics",
+                            "reason": "some series have no replicate readings",
+                            "evidence": "data_quality.series_without_replicate"})
+    confirmations = [
+        {"item": "outlier threshold", "reason": "default robust-z threshold applied unless the case overrides it",
+         "handling": "human_confirm"},
+        {"item": "batch and channel attribution", "reason": "attribution rests on the supplied group columns",
+         "handling": "human_confirm"},
+    ]
+    return unexplained, confirmations
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Interpret experimental readings and anomalies.")
     parser.add_argument("--case", default="/input/case.json")
@@ -1003,6 +1029,7 @@ def main(argv=None):
     result["stats"] = stats
     result["contract_notes"] = notes
     result["claims"] = build_claims(payload)
+    result["unexplained"], result["confirmations"] = build_open_items(payload, payload.get("data_quality") or {})
 
     out_dir = os.path.dirname(os.path.abspath(args.out))
     try:
